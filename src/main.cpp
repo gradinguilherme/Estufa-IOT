@@ -9,7 +9,12 @@
 
 #define DHTPIN    4 
 #define waterpump 18
+#define waterpin  23 //botão de acionamento manual da bomba d'água
 #define soilPin   5
+#define ExaustFan 19
+#define CoolingFan 21
+#define HeatingLed 22 //representaçâo de aquecedor
+
 
 #define DHTTYPE DHT11   
 DHT dht(DHTPIN, DHTTYPE);
@@ -56,27 +61,78 @@ static void InfluxDB_TaskInit( void );
 static void InfluxDB_TaskMng( void );
 static float Get_HumidityValue( void );
 static float Get_TemperatureValue( void );
+static float Get_MoistureValue( void );
+
+// Function to calculate the average moisture value
+static float Get_MoistureValue(void) {
+    uint16_t idx = 0u;
+    float temp = 0;
+    for (idx = 0; idx < SENSOR_BUFFER_SIZE; idx++) {
+        temp = temp + Moist_buffer[idx];
+    }
+    temp = temp / SENSOR_BUFFER_SIZE;
+    return temp;
+}
 
 //variaveis
 float dht_temperature = 0;
 float dht_humidity = 0;
+float Moisture = 0;
 static float temp_buffer[SENSOR_BUFFER_SIZE] = { 0 };
 static float humidity_buffer[SENSOR_BUFFER_SIZE] = { 0 };
+static float Moist_buffer[SENSOR_BUFFER_SIZE] = { 0 };
 static uint16_t sensor_buffer_idx = 0;
 
+
+IRAM_ATTR void ManualWatering(){
+  digitalWrite(waterpump, HIGH);
+  delay(1000);
+  digitalWrite(waterpump, LOW);
+}
 void setup() {
   Serial.begin(115200);
   dht.begin();
   WiFi_Setup();
   InfluxDB_TaskInit();
   DHT11_TaskInit();
- 
+
+  pinMode(waterpump, OUTPUT);
+  pinMode(soilPin, INPUT);
+  pinMode(ExaustFan, OUTPUT);
+  pinMode(CoolingFan, OUTPUT);
+  
+  attachInterrupt(waterpin, ManualWatering, FALLING);
+
  sensor.addTag("SSID", WiFi.SSID());
   
 }
 void loop() {
   DHT11_TaskMng();
   InfluxDB_TaskMng();
+  
+  if(Moisture > 1433){// aproximadamente 35% de umidade do solo
+    digitalWrite(waterpump, HIGH);
+  }
+  else{
+    digitalWrite(waterpump, LOW);
+  }
+
+  if(dht_humidity > 60){
+    digitalWrite(ExaustFan, HIGH);
+    digitalWrite(CoolingFan,LOW);
+    digitalWrite(HeatingLed, LOW);
+
+  }
+
+  if(dht_temperature > 24){
+    digitalWrite(CoolingFan, HIGH);
+  }
+
+  if(dht_temperature < 18){
+    digitalWrite(ExaustFan, LOW);
+    digitalWrite(CoolingFan, LOW);
+    digitalWrite(HeatingLed, HIGH);
+  }
 }
 static void WiFi_Setup(void){
    // Setup wifi
@@ -148,18 +204,16 @@ static void InfluxDB_TaskMng(void){
   if( now - influxdb_send_timestamp >= INFLUXDB_SEND_TIME )
   {
     influxdb_send_timestamp = now;
-    // Serial.print("Average Humdity = ");
-    // Serial.println( Get_HumidityValue() );
-    // Serial.print("Average Temperature = ");
-    // Serial.println( Get_TemperatureValue() );
-    // Store measured value into point
+   
     sensor.clearFields();
-    // Report RSSI of currently connected network
     sensor.addField("rssi", WiFi.RSSI());
-    // Add temperature and humidity values as floats
     sensor.addField("temperature", Get_TemperatureValue());
     sensor.addField("humidity", Get_HumidityValue());
-    //sensor.addField("moisture",Get_MoistureValue());
+    float moistureValue = Get_MoistureValue();
+    Serial.print("Moisture Value: ");
+    Serial.println(moistureValue);
+
+    sensor.addField("moisture",Get_MoistureValue());
     // Print what are we exactly writing
     Serial.print("Writing: ");
     Serial.println(client.pointToLineProtocol(sensor));
@@ -188,10 +242,21 @@ static float Get_HumidityValue(void) {
 }
 
 static float Get_TemperatureValue(void) {
+
     uint16_t idx = 0u;
     float temp = 0;
     for (idx = 0; idx < SENSOR_BUFFER_SIZE; idx++) {
         temp = temp + temp_buffer[idx];
+    }
+    temp = temp / SENSOR_BUFFER_SIZE;
+    return temp;
+}
+
+static float Get_MoistureValue(void) {
+ uint16_t idx = 0u;
+    float temp = 0;
+    for (idx = 0; idx < SENSOR_BUFFER_SIZE; idx++) {
+        temp = temp + Moist_buffer[idx];
     }
     temp = temp / SENSOR_BUFFER_SIZE;
     return temp;

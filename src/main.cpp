@@ -30,10 +30,10 @@ ESP8266WiFiMulti wifiMulti;
 #define WIFI_SSID         "Gustavo"
 #define WIFI_PASSWORD     "mqtteste"
 
-#define INFLUXDB_URL      "https://us-east-1-1.aws.cloud2.influxdata.com"
-#define INFLUXDB_TOKEN    "fzN82wK6GrGkO1qb3zLh7ygG9s4VxdZhdp4cq2CFfl2QlXlT2bChG3932HrISQzcdDlz9xUlYzvsfsxuLieMyA=="
-#define INFLUXDB_ORG      "ac342d73b369637c"
-#define INFLUXDB_BUCKET   "Estufa IOT"
+#define INFLUXDB_URL "https://us-east-1-1.aws.cloud2.influxdata.com"
+#define INFLUXDB_TOKEN "qaAijaDITMPeRl6EkKtBmzx1mAt-H9UeG71jjAPmRioTIUlmP2Y0N_GnFgY1M4YXAAapc1QjUWcIlFPRUktvvA=="
+#define INFLUXDB_ORG "ac342d73b369637c"
+#define INFLUXDB_BUCKET "Estufa"
 //#define DEVICE            "estufa_001"
 #define INFLUXDB_SEND_TIME    (10000u) //10s
 #define DHT11_REFRESH_TIME    (5000u) //5s
@@ -45,7 +45,7 @@ ESP8266WiFiMulti wifiMulti;
 InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN, InfluxDbCloud2CACert);
 
 // Declare Data point
-Point sensor("wifi_status");
+Point sensor("ESTUFA");
 
 static uint32_t dht_refresh_timestamp = 0u;
 static uint32_t influxdb_send_timestamp = 0u;
@@ -56,11 +56,12 @@ static void InfluxDB_TaskInit( void );
 static void InfluxDB_TaskMng( void );
 static float Get_HumidityValue( void );
 static float Get_TemperatureValue( void );
+
 //variaveis
 float dht_temperature = 0;
 float dht_humidity = 0;
-static uint8_t temp_buffer[SENSOR_BUFFER_SIZE] = { 0 };
-static uint8_t humidity_buffer[SENSOR_BUFFER_SIZE] = { 0 };
+static float temp_buffer[SENSOR_BUFFER_SIZE] = { 0 };
+static float humidity_buffer[SENSOR_BUFFER_SIZE] = { 0 };
 static uint16_t sensor_buffer_idx = 0;
 
 void setup() {
@@ -147,19 +148,25 @@ static void InfluxDB_TaskMng(void){
   if( now - influxdb_send_timestamp >= INFLUXDB_SEND_TIME )
   {
     influxdb_send_timestamp = now;
+    // Serial.print("Average Humdity = ");
+    // Serial.println( Get_HumidityValue() );
+    // Serial.print("Average Temperature = ");
+    // Serial.println( Get_TemperatureValue() );
+    // Store measured value into point
     sensor.clearFields();
     // Report RSSI of currently connected network
-    sensor.addField( "rssi", WiFi.RSSI() );
-    // add temperature and humidity values also
-    sensor.addField( "temperature", Get_TemperatureValue() );
-    sensor.addField( "humidity", Get_HumidityValue() );
+    sensor.addField("rssi", WiFi.RSSI());
+    // Add temperature and humidity values as floats
+    sensor.addField("temperature", Get_TemperatureValue());
+    sensor.addField("humidity", Get_HumidityValue());
+    //sensor.addField("moisture",Get_MoistureValue());
     // Print what are we exactly writing
     Serial.print("Writing: ");
     Serial.println(client.pointToLineProtocol(sensor));
     // If no Wifi signal, try to reconnect it
     if (wifiMulti.run() != WL_CONNECTED)
     {
-      Serial.println("Wifi connection lost");
+        Serial.println("Wifi connection lost");
     }
     // Write point
     if (!client.writePoint(sensor))
@@ -170,26 +177,22 @@ static void InfluxDB_TaskMng(void){
   }
 }
 
-  static float Get_HumidityValue( void ) {
-  uint16_t idx = 0u;
-  uint32_t temp = 0u;
-  for( idx=0; idx<SENSOR_BUFFER_SIZE; idx++ )
-  {
-    temp = temp + humidity_buffer[idx];
-  }
-  temp = temp/SENSOR_BUFFER_SIZE;
-  return (float)temp;
-  }
-
-
-  static float Get_TemperatureValue( void ){
-  uint16_t idx = 0u;
-  uint32_t temp = 0u;
-  for( idx=0; idx<SENSOR_BUFFER_SIZE; idx++ )
-  {
-    temp = temp + temp_buffer[idx];
-  }
-  temp = temp/SENSOR_BUFFER_SIZE;
-  return (float)temp;
+static float Get_HumidityValue(void) {
+    uint16_t idx = 0u;
+    float temp = 0;
+    for (idx = 0; idx < SENSOR_BUFFER_SIZE; idx++) {
+        temp = temp + humidity_buffer[idx];
+    }
+    temp = temp / SENSOR_BUFFER_SIZE;
+    return temp;
 }
-  
+
+static float Get_TemperatureValue(void) {
+    uint16_t idx = 0u;
+    float temp = 0;
+    for (idx = 0; idx < SENSOR_BUFFER_SIZE; idx++) {
+        temp = temp + temp_buffer[idx];
+    }
+    temp = temp / SENSOR_BUFFER_SIZE;
+    return temp;
+}
